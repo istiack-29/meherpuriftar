@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ইফতার কম্পাস | মেহেরপুর</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #10b981;
+            --bg-dark: #0f172a;
+            --accent: #f59e0b;
+            --text-light: #f8fafc;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Hind Siliguri', sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-light); overflow: hidden; }
+
+        /* ===== SPLASH SCREEN ===== */
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 1s ease;
+        }
+        .crescent-glow { font-size: 3rem; margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.6)); animation: float 3s infinite; }
+        .loader-bar { width: 150px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; position: relative; }
+        .loader-bar::after { content: ''; position: absolute; left: -100%; width: 100%; height: 100%; background: var(--primary); animation: loading 2s infinite; }
+        @keyframes loading { 0% { left: -100%; } 100% { left: 100%; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        /* ===== SHUTDOWN/EID SCREEN ===== */
+        #shutdown-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #020617; display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10000; padding: 30px; text-align: center;
+        }
+        .stars-icon { font-size: 4rem; color: #6366f1; margin-bottom: 20px; }
+
+        /* MAIN UI */
+        #app-container { height: 100vh; display: flex; flex-direction: column; visibility: hidden; }
+        header {
+            padding: 0.75rem 1rem; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--glass-border); display: flex;
+            justify-content: space-between; align-items: center; z-index: 1000; gap: 8px;
+        }
+        .logo { font-size: 1.1rem; color: var(--primary); font-weight: 700; white-space: nowrap; }
+        .header-btns { display: flex; gap: 8px; }
+        .btn-header { padding: 6px 12px; border-radius: 15px; font-weight: 600; font-size: 0.75rem; cursor: pointer; border: none; white-space: nowrap; }
+        .btn-report { background: var(--primary); color: white; text-decoration: none; display: flex; align-items: center; }
+        .btn-donate { background: var(--accent); color: #000; }
+
+        .countdown-banner {
+            background: rgba(16, 185, 129, 0.1); border-bottom: 1px solid var(--glass-border);
+            text-align: center; padding: 8px; font-size: 0.85rem; color: var(--accent); font-weight: 600;
+        }
+
+        #map { flex-grow: 1; width: 100%; background: #111; }
+        .footer-credit {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px);
+            padding: 8px 16px; border-radius: 20px; border: 1px solid var(--glass-border);
+            font-size: 0.75rem; color: #94a3b8; text-align: center; width: max-content;
+        }
+        .footer-credit a { color: var(--primary); text-decoration: none; font-weight: 700; }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+            display: none; justify-content: center; align-items: center; z-index: 10001;
+        }
+        .modal-card { background: #1e293b; padding: 2rem; border-radius: 24px; width: 90%; max-width: 350px; text-align: center; border: 1px solid var(--glass-border); }
+        .payment-box { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; border: 1px dashed var(--primary); margin: 15px 0; }
+
+        /* PERMISSION GUARD */
+        #permission-guard {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0f172a; display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 9000; padding: 20px; text-align: center;
+        }
+        .btn-grant { margin-top: 20px; padding: 15px 30px; background: var(--primary); color: white; border: none; border-radius: 30px; font-weight: 600; cursor: pointer; }
+
+        /* POPUP */
+        .btn-nav { display: block; width: 100%; text-align: center; background: var(--primary); color: white !important; text-decoration: none; padding: 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; margin-top: 10px; }
+        .user-location-pulse { background: #3b82f6; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+    </style>
+</head>
+<body>
+
+    <!-- Shutdown / Eid Screen -->
+    <div id="shutdown-screen">
+        <div id="shutdown-icon" class="stars-icon">✨</div>
+        <h2 id="shutdown-title" style="margin-bottom: 15px;">ইফতারের সময় শেষ</h2>
+        <p id="shutdown-msg" style="color: #94a3b8; line-height: 1.6;">আলহামদুলিল্লাহ, আজকের রোজা সম্পন্ন হয়েছে।<br>আগামীকাল <b>১২:০১ PM</b> এ নতুন তথ্য আপডেট করা হবে।</p>
+        <p style="margin-top: 25px; font-size: 0.9rem; color: var(--primary);">আল্লাহ আমাদের দোয়া কবুল করুন।</p>
+    </div>
+
+    <!-- Splash Screen -->
+    <div id="splash-screen">
+        <div class="crescent-glow">🌙</div>
+        <h1 class="splash-title" style="margin-bottom: 20px;">ম্যাপ লোড হচ্ছে…</h1>
+        <div class="loader-bar"></div>
+    </div>
+
+    <!-- Permission Guard -->
+    <div id="permission-guard">
+        <div style="font-size: 4rem; margin-bottom: 20px;">📍</div>
+        <h2>লোকেশন পারমিশন প্রয়োজন</h2>
+        <p style="color: #94a3b8; margin-top: 10px;">আপনার আশেপাশের ইফতারের জায়গাগুলো দেখতে GPS অন করুন।</p>
+        <button class="btn-grant" onclick="requestPermission()">পারমিশন দিন</button>
+    </div>
+
+    <!-- Donate Modal -->
+    <div class="modal-overlay" id="donateModal">
+        <div class="modal-card">
+            <h2 style="color: var(--accent); margin-bottom: 1rem;">ইফতারে সহায়তা করুন</h2>
+            <p>আপনার ছোট অবদান একজন রোজাদারের মুখে হাসি ফোটাতে পারে।</p>
+            <div class="payment-box">
+                <span style="font-size: 0.7rem; color: var(--primary); display: block; margin-bottom: 5px;">বিকাশ / নগদ</span>
+                <span style="font-size: 1.2rem; font-weight: 700;">+8801644547079</span>
+            </div>
+            <button onclick="toggleModal(false)" style="margin-top: 20px; background: none; border: none; color: #94a3b8; cursor: pointer;">বন্ধ করুন</button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <header>
+            <div class="logo">ইফতার কম্পাস</div>
+            <div class="header-btns">
+                <a href="https://wa.me/8801644547079?text=আসসালামু%20আলাইকুম,%20আমি%20ইফতারের%20নতুন%20তথ্য%20দিতে%20চাই:" target="_blank" class="btn-header btn-report">
+                    তথ্য দিন
+                </a>
+                <button class="btn-header btn-donate" onclick="toggleModal(true)">দান করুন</button>
+            </div>
+        </header>
+
+        <div class="countdown-banner" id="countdown-timer">
+            মেহেরপুরে ইফতারের সময় বাকি 00h:00m:00s
+        </div>
+
+        <div id="map"></div>
+
+        <div class="footer-credit">
+            © <a href="https://fb.com/anonymous.istiack" target="_blank">ইসতিয়াক আহমেদ খান</a>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const MEHERPUR_LAT = 23.7667;
+        const MEHERPUR_LNG = 88.6333;
+
+        // ===== FULL CALENDAR DATA =====
+        const IFTAR_CALENDAR = {
+            "2026-02-19": "18:04", "2026-02-20": "18:04", "2026-02-21": "18:05", "2026-02-22": "18:05",
+            "2026-02-23": "18:06", "2026-02-24": "18:06", "2026-02-25": "18:07", "2026-02-26": "18:07",
+            "2026-02-27": "18:08", "2026-02-28": "18:08", "2026-03-01": "18:09", "2026-03-02": "18:09",
+            "2026-03-03": "18:10", "2026-03-04": "18:10", "2026-03-05": "18:11", "2026-03-06": "18:11",
+            "2026-03-07": "18:12", "2026-03-08": "18:12", "2026-03-09": "18:12", "2026-03-10": "18:13",
+            "2026-03-11": "18:13", "2026-03-12": "18:14", "2026-03-13": "18:14", "2026-03-14": "18:15",
+            "2026-03-15": "18:15", "2026-03-16": "18:15", "2026-03-17": "18:16", "2026-03-18": "18:16",
+            "2026-03-19": "18:17", "2026-03-20": "18:17"
+        };
+
+        // Simplified Locations for Meherpur
+        const IFTAR_LOCATIONS = [
+            
+        ];
+
+        let map, markersLayer;
+
+        function getTodayKey() {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        window.onload = () => {
+            const todayKey = getTodayKey();
+            const now = new Date();
+            const eidDate = new Date("2026-03-21");
+
+            // EID MUBARAK LOGIC
+            if (now >= eidDate) {
+                showShutdown("ঈদ মোবারক!", "পবিত্র ঈদুল ফিতর সবার জীবনে বয়ে আনুক অনাবিল আনন্দ।", "🌙");
+                return;
+            }
+
+            const iftarTimeString = IFTAR_CALENDAR[todayKey];
+            if (!iftarTimeString) {
+                // If not in Ramadan calendar yet (before 19th Feb)
+                checkLocationPermission();
+                return;
+            }
+
+            const [h, m] = iftarTimeString.split(':');
+            const iftarFullDate = new Date();
+            iftarFullDate.setHours(parseInt(h), parseInt(m), 0);
+            
+            const activationTime = new Date();
+            activationTime.setHours(12, 1, 0);
+
+            // SHUTDOWN LOGIC
+            if (now > iftarFullDate || now < activationTime) {
+                showShutdown("ইফতারের সময় শেষ", "আলহামদুলিল্লাহ, আজকের রোজা সম্পন্ন হয়েছে।<br>আগামীকাল <b>১২:০১ PM</b> এ নতুন তথ্য আপডেট করা হবে।", "✨");
+            } else {
+                startCountdown(iftarFullDate);
+                checkLocationPermission();
+            }
+        };
+
+        function showShutdown(title, msg, icon) {
+            document.getElementById('splash-screen').style.display = 'none';
+            document.getElementById('shutdown-title').innerText = title;
+            document.getElementById('shutdown-msg').innerHTML = msg;
+            document.getElementById('shutdown-icon').innerText = icon;
+            document.getElementById('shutdown-screen').style.display = 'flex';
+        }
+
+        function startCountdown(target) {
+            function update() {
+                const now = new Date();
+                const diff = target - now;
+                if (diff <= 0) {
+                    location.reload(); // Shutdown when timer hits zero
+                    return;
+                }
+                const hrs = Math.floor(diff / 3600000);
+                const mins = Math.floor((diff % 3600000) / 60000);
+                const secs = Math.floor((diff % 60000) / 1000);
+                document.getElementById('countdown-timer').innerText = `মেহেরপুরে ইফতারের সময় বাকি ${hrs}h:${mins}m:${secs}s`;
+            }
+            update();
+            setInterval(update, 1000);
+        }
+
+        function checkLocationPermission() {
+            if ("geolocation" in navigator) {
+                navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                    if (result.state === 'granted') {
+                        startApp();
+                    } else {
+                        document.getElementById('splash-screen').style.display = 'none';
+                        document.getElementById('permission-guard').style.display = 'flex';
+                    }
+                });
+            }
+        }
+
+        function requestPermission() {
+            navigator.geolocation.getCurrentPosition(() => startApp(), () => alert("GPS প্রয়োজন।"));
+        }
+
+        function startApp() {
+            document.getElementById('permission-guard').style.display = 'none';
+            document.getElementById('splash-screen').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('splash-screen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('splash-screen').style.display = 'none';
+                    document.getElementById('app-container').style.visibility = 'visible';
+                    initMap();
+                }, 1000);
+            }, 2500);
+        }
+
+        function toggleModal(show) {
+            document.getElementById('donateModal').style.display = show ? 'flex' : 'none';
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([MEHERPUR_LAT, MEHERPUR_LNG], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+            
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                L.circleMarker([lat, lng], { radius: 8, className: 'user-location-pulse', fillColor: "#3b82f6", color: "#fff", weight: 2, opacity: 1, fillOpacity: 1 }).addTo(map);
+                map.flyTo([lat, lng], 14);
+            });
+            
+            IFTAR_LOCATIONS.forEach(loc => {
+                const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`;
+                L.marker([loc.lat, loc.lng]).bindPopup(`
+                    <div style="min-width:140px; text-align:center;">
+                        <h3 style="color:var(--accent); margin-bottom:8px;">${loc.org}</h3>
+                        <a href="${navUrl}" target="_blank" class="btn-nav">🚀 নভিগেট করুন</a>
+                    </div>
+                `).addTo(markersLayer);
+            });
+        }
+    </script>
+</body>
+</html>
+
